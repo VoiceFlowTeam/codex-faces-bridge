@@ -25,11 +25,16 @@ typedef enum {
 } board_button_t;
 
 typedef void (*board_button_fn)(board_button_t button, bool pressed, void *context);
+typedef void (*board_power_fn)(const codex_power_status_t *status, void *context);
 
-esp_err_t board_fire_faces_init(board_button_fn button_fn, void *button_context);
+esp_err_t board_fire_faces_init(board_button_fn button_fn,
+                                void *button_context,
+                                board_power_fn power_fn,
+                                void *power_context);
 void board_fire_faces_set_connected(bool connected);
 void board_fire_faces_set_agent_layer(bool enabled);
 void board_fire_faces_apply_lighting(const codex_lighting_state_t *state, void *context);
+void board_fire_faces_get_power_status(codex_power_status_t *status, void *context);
 
 #ifdef __cplusplus
 }

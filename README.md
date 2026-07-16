@@ -21,9 +21,14 @@ Remove the FIRE M5GO bottom before fitting FACES II. The two bottoms are alterna
 | Start | `ACT08` | `ACT08` |
 | Pause, short press | `ACT09` | `ACT09` |
 | Pause, hold 0.7 s | toggle Agent layer | toggle Agent layer |
-| FIRE A/B/C | `ACT10` / `ACT11` / `ACT12` | same |
+| Pause + D-pad Up/Down | reasoning dial clockwise/counter-clockwise | same |
+| FIRE A | `ACT10` | `ACT10` |
+| FIRE B | reasoning dial press | same |
+| FIRE C | `ACT12` | `ACT12` |
 
-The FACES II LEDs show the six thread colors supplied by Codex. The FIRE screen shows six matching tiles; a blue header is the normal layer, and orange is the Agent layer.
+The FACES II LEDs show the six thread colors supplied by Codex. The FIRE screen shows six matching tiles; a blue header is the normal layer, and orange is the Agent layer. Lighting effects `off`, `solid`, `snake`, `rainbow`, `breath`, `gradient`, and `shallowBreath` are rendered by the firmware. A segmented battery icon in the upper-right shows the IP5306 battery level and turns green while charging.
+
+Codex owns and persists command-key and joystick mappings. FIRE B behaves like the physical dial: short press confirms the highlighted control, while a long press opens Codex Micro settings.
 
 ## Build and flash
 
@@ -54,6 +59,7 @@ After flashing:
 ## Implemented compatibility surface
 
 - BLE HID over GATT, vendor Usage Page `0xFF00`
+- Standard BLE Battery Service populated from the FIRE IP5306
 - HID Report ID `6`, 63-byte report data (64 bytes including report ID)
 - Work Louder identity, VID `0x303A`, PID `0x8360`
 - RPC channel `2`, up to 61 payload bytes per HID frame
@@ -63,6 +69,8 @@ After flashing:
 - `v.oai.rgbcfg`
 - `v.oai.hid` notifications
 - `v.oai.rad` notifications
+- Encoder notifications (`ENC`, `ENC_CW`, `ENC_CC`)
+- Live profile/layer status and a chip-derived unique serial number
 
 This is a clean-room compatibility implementation based on observed app/device behavior. It is not an official OpenAI, Codex, or Work Louder product.
 

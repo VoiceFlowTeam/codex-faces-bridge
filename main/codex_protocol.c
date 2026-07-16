@@ -10,7 +10,7 @@
 #include "freertos/semphr.h"
 
 #define CODEX_RPC_BUFFER_SIZE 2048
-#define CODEX_FIRMWARE_VERSION "0.1.2-fire-faces"
+#define CODEX_FIRMWARE_VERSION "0.2.0-fire-faces"
 
 static const char *TAG = "codex_rpc";
 
@@ -18,10 +18,14 @@ static codex_protocol_send_fn s_send_fn;
 static void *s_send_context;
 static codex_protocol_lighting_fn s_lighting_fn;
 static void *s_lighting_context;
+static codex_protocol_power_fn s_power_fn;
+static void *s_power_context;
 static codex_lighting_state_t s_lighting;
 static char s_rpc_buffer[CODEX_RPC_BUFFER_SIZE];
 static size_t s_rpc_length;
 static SemaphoreHandle_t s_send_mutex;
+static int s_profile_index;
+static int s_layer_index;
 
 static esp_err_t send_json(cJSON *message)
 {
@@ -122,11 +126,25 @@ static void apply_thread_lighting(const cJSON *params)
         thread->brightness = (float)number_or(item, "b", thread->brightness);
         thread->effect = (uint8_t)number_or(item, "e", thread->effect);
         thread->speed = (float)number_or(item, "s", thread->speed);
+        thread->sync_keys_lighting = number_or(item, "sk", thread->sync_keys_lighting ? 1 : 0) != 0;
+        thread->sync_ambient_lighting = number_or(item, "sa", thread->sync_ambient_lighting ? 1 : 0) != 0;
     }
 
     if (s_lighting_fn != NULL) {
         s_lighting_fn(&s_lighting, s_lighting_context);
     }
+}
+
+static void apply_lighting_side(const cJSON *params, codex_lighting_side_t *side)
+{
+    if (!cJSON_IsObject(params) || side == NULL) {
+        return;
+    }
+    side->color = (uint32_t)number_or(params, "c", side->color);
+    side->brightness = (float)number_or(params, "b", side->brightness);
+    side->effect = (uint8_t)number_or(params, "e", side->effect);
+    side->speed = (float)number_or(params, "s", side->speed);
+    side->magic = (float)number_or(params, "m", side->magic);
 }
 
 static void apply_rgb_config(const cJSON *params)
@@ -135,11 +153,9 @@ static void apply_rgb_config(const cJSON *params)
         return;
     }
     const cJSON *ambient = cJSON_GetObjectItemCaseSensitive(params, "ambient");
-    if (cJSON_IsObject(ambient)) {
-        s_lighting.ambient_color = (uint32_t)number_or(ambient, "c", s_lighting.ambient_color);
-        s_lighting.ambient_brightness = (float)number_or(ambient, "b", s_lighting.ambient_brightness);
-        s_lighting.ambient_effect = (uint8_t)number_or(ambient, "e", s_lighting.ambient_effect);
-    }
+    const cJSON *keys = cJSON_GetObjectItemCaseSensitive(params, "keys");
+    apply_lighting_side(ambient, &s_lighting.ambient);
+    apply_lighting_side(keys, &s_lighting.keys);
     if (s_lighting_fn != NULL) {
         s_lighting_fn(&s_lighting, s_lighting_context);
     }
@@ -175,12 +191,20 @@ static void process_request(const char *line)
         cJSON_AddStringToObject(result, "version", CODEX_FIRMWARE_VERSION);
         send_result(request, result);
     } else if (strcmp(method, "device.status") == 0) {
+        codex_power_status_t power = {
+            .battery_percent = 0,
+            .is_charging = false,
+            .available = false,
+        };
+        if (s_power_fn != NULL) {
+            s_power_fn(&power, s_power_context);
+        }
         cJSON *result = cJSON_CreateObject();
         cJSON_AddStringToObject(result, "version", CODEX_FIRMWARE_VERSION);
-        cJSON_AddNumberToObject(result, "profile_index", 0);
-        cJSON_AddNumberToObject(result, "layer_index", 0);
-        cJSON_AddNumberToObject(result, "battery", 100);
-        cJSON_AddBoolToObject(result, "is_charging", false);
+        cJSON_AddNumberToObject(result, "profile_index", s_profile_index);
+        cJSON_AddNumberToObject(result, "layer_index", s_layer_index);
+        cJSON_AddNumberToObject(result, "battery", power.battery_percent);
+        cJSON_AddBoolToObject(result, "is_charging", power.is_charging);
         send_result(request, result);
     } else if (strcmp(method, "v.oai.thstatus") == 0) {
         apply_thread_lighting(params);
@@ -199,7 +223,9 @@ static void process_request(const char *line)
 esp_err_t codex_protocol_init(codex_protocol_send_fn send_fn,
                               void *send_context,
                               codex_protocol_lighting_fn lighting_fn,
-                              void *lighting_context)
+                              void *lighting_context,
+                              codex_protocol_power_fn power_fn,
+                              void *power_context)
 {
     if (send_fn == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -208,7 +234,11 @@ esp_err_t codex_protocol_init(codex_protocol_send_fn send_fn,
     s_send_context = send_context;
     s_lighting_fn = lighting_fn;
     s_lighting_context = lighting_context;
+    s_power_fn = power_fn;
+    s_power_context = power_context;
     s_rpc_length = 0;
+    s_profile_index = 0;
+    s_layer_index = 0;
     memset(&s_lighting, 0, sizeof(s_lighting));
     for (int i = 0; i < CODEX_THREAD_COUNT; ++i) {
         s_lighting.threads[i].id = (uint8_t)i;
@@ -245,9 +275,15 @@ void codex_protocol_feed(const uint8_t *data, size_t length)
     }
 }
 
-esp_err_t codex_protocol_send_key(const char *key, bool pressed, int agent_index)
+void codex_protocol_set_device_state(int profile_index, int layer_index)
 {
-    if (key == NULL) {
+    s_profile_index = profile_index;
+    s_layer_index = layer_index;
+}
+
+esp_err_t codex_protocol_send_hid_action(const char *key, int action, int agent_index)
+{
+    if (key == NULL || action < 0) {
         return ESP_ERR_INVALID_ARG;
     }
     cJSON *message = cJSON_CreateObject();
@@ -259,7 +295,7 @@ esp_err_t codex_protocol_send_key(const char *key, bool pressed, int agent_index
     }
     cJSON_AddStringToObject(message, "method", "v.oai.hid");
     cJSON_AddStringToObject(params, "k", key);
-    cJSON_AddNumberToObject(params, "act", pressed ? 1 : 0);
+    cJSON_AddNumberToObject(params, "act", action);
     if (agent_index >= 0) {
         cJSON_AddNumberToObject(params, "ag", agent_index);
     }
@@ -267,6 +303,11 @@ esp_err_t codex_protocol_send_key(const char *key, bool pressed, int agent_index
     const esp_err_t status = send_json(message);
     cJSON_Delete(message);
     return status;
+}
+
+esp_err_t codex_protocol_send_key(const char *key, bool pressed, int agent_index)
+{
+    return codex_protocol_send_hid_action(key, pressed ? 1 : 0, agent_index);
 }
 
 esp_err_t codex_protocol_send_joystick(float angle, float distance)

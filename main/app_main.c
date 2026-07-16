@@ -19,6 +19,7 @@ static const char *s_game_active_key[2];
 static int s_game_active_agent[2] = {-1, -1};
 static bool s_game_suppressed[2];
 static int64_t s_pause_pressed_at;
+static bool s_pause_chord_used;
 
 static void send_key(const char *key, bool pressed, int agent_index)
 {
@@ -66,6 +67,22 @@ static void handle_direction(board_button_t button, bool pressed)
     static const char *agent_keys[] = {"AG00", "AG02", "AG03", "AG01"};
     static const int agent_indices[] = {0, 2, 3, 1};
     const int offset = button - BOARD_BUTTON_UP;
+
+    if (s_pause_pressed_at != 0 &&
+        (button == BOARD_BUTTON_UP || button == BOARD_BUTTON_DOWN)) {
+        if (pressed) {
+            s_pause_chord_used = true;
+            s_direction_suppressed[offset] = true;
+            const char *encoder_key = button == BOARD_BUTTON_UP ? "ENC_CW" : "ENC_CC";
+            const esp_err_t status = codex_protocol_send_hid_action(encoder_key, 2, -1);
+            if (status != ESP_OK && status != ESP_ERR_INVALID_STATE) {
+                ESP_LOGW(TAG, "Failed to send %s: %s", encoder_key, esp_err_to_name(status));
+            }
+        } else if (s_direction_suppressed[offset]) {
+            s_direction_suppressed[offset] = false;
+        }
+        return;
+    }
 
     if (!pressed && s_direction_suppressed[offset]) {
         s_direction_suppressed[offset] = false;
@@ -115,6 +132,7 @@ static void set_agent_layer(bool enabled)
         }
     }
     s_agent_layer = enabled;
+    codex_protocol_set_device_state(0, enabled ? 1 : 0);
     board_fire_faces_set_agent_layer(enabled);
     ESP_LOGI(TAG, "Agent layer %s", enabled ? "enabled" : "disabled");
 }
@@ -131,10 +149,13 @@ static void button_event(board_button_t button, bool pressed, void *context)
     if (button == BOARD_BUTTON_PAUSE) {
         if (pressed) {
             s_pause_pressed_at = esp_timer_get_time();
+            s_pause_chord_used = false;
         } else if (s_pause_pressed_at != 0) {
             const int64_t held_us = esp_timer_get_time() - s_pause_pressed_at;
             s_pause_pressed_at = 0;
-            if (held_us >= AGENT_LAYER_HOLD_US) {
+            if (s_pause_chord_used) {
+                s_pause_chord_used = false;
+            } else if (held_us >= AGENT_LAYER_HOLD_US) {
                 set_agent_layer(!s_agent_layer);
             } else {
                 send_key("ACT09", true, -1);
@@ -172,7 +193,7 @@ static void button_event(board_button_t button, bool pressed, void *context)
         send_key("ACT10", pressed, -1);
         break;
     case BOARD_BUTTON_FIRE_B:
-        send_key("ACT11", pressed, -1);
+        send_key("ENC", pressed, -1);
         break;
     case BOARD_BUTTON_FIRE_C:
         send_key("ACT12", pressed, -1);
@@ -194,6 +215,18 @@ static void connection_changed(bool connected, void *context)
     board_fire_faces_set_connected(connected);
 }
 
+static void power_changed(const codex_power_status_t *status, void *context)
+{
+    (void)context;
+    if (status == NULL || !status->available) {
+        return;
+    }
+    const esp_err_t result = codex_hid_set_battery_level((uint8_t)status->battery_percent);
+    if (result != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to update BLE battery level: %s", esp_err_to_name(result));
+    }
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Starting Codex Micro bridge for M5Stack FIRE + FACES II GameBoy");
@@ -201,7 +234,9 @@ void app_main(void)
     ESP_ERROR_CHECK(codex_protocol_init(codex_hid_send_text,
                                         NULL,
                                         board_fire_faces_apply_lighting,
+                                        NULL,
+                                        board_fire_faces_get_power_status,
                                         NULL));
-    ESP_ERROR_CHECK(board_fire_faces_init(button_event, NULL));
+    ESP_ERROR_CHECK(board_fire_faces_init(button_event, NULL, power_changed, NULL));
     ESP_ERROR_CHECK(codex_hid_init(hid_receive, NULL, connection_changed, NULL));
 }

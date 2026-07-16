@@ -9,6 +9,7 @@
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -18,6 +19,10 @@
 #define FIRE_I2C_SCL GPIO_NUM_22
 #define FIRE_I2C_PORT I2C_NUM_0
 #define FACES_GAMEPAD_ADDRESS 0x08
+#define FIRE_IP5306_ADDRESS 0x75
+#define IP5306_REG_CHARGE_STATUS 0x70
+#define IP5306_REG_BATTERY_LEVEL 0x78
+#define POWER_POLL_INTERVAL_MS 30000
 
 #define FIRE_BUTTON_A GPIO_NUM_39
 #define FIRE_BUTTON_B GPIO_NUM_38
@@ -26,6 +31,8 @@
 #define FACES_RGB_GPIO GPIO_NUM_15
 #define FACES_RGB_COUNT 10
 #define RGB_RMT_RESOLUTION_HZ 10000000
+#define LIGHTING_FRAME_INTERVAL_MS 40
+#define SCREEN_ANIMATION_INTERVAL_MS 500
 
 #define FIRE_LCD_HOST SPI3_HOST
 #define FIRE_LCD_MOSI GPIO_NUM_23
@@ -42,6 +49,8 @@ static const char *TAG = "fire_faces";
 
 static board_button_fn s_button_fn;
 static void *s_button_context;
+static board_power_fn s_power_fn;
+static void *s_power_context;
 static rmt_channel_handle_t s_led_channel;
 static rmt_encoder_handle_t s_led_encoder;
 static spi_device_handle_t s_lcd;
@@ -53,7 +62,10 @@ static bool s_led_available;
 static bool s_lcd_available;
 static bool s_gamepad_available;
 static bool s_gamepad_error_logged;
+static bool s_power_error_logged;
+static bool s_lighting_received;
 static TickType_t s_next_gamepad_retry;
+static codex_power_status_t s_power_status;
 
 static const uint8_t s_digit_3x5[6][5] = {
     {0b010, 0b110, 0b010, 0b010, 0b111},
@@ -83,6 +95,142 @@ static uint32_t apply_brightness(uint32_t color, float brightness)
     const uint8_t green = (uint8_t)(((color >> 8) & 0xFF) * brightness);
     const uint8_t blue = (uint8_t)((color & 0xFF) * brightness);
     return ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
+}
+
+static float clamp_unit(float value)
+{
+    if (value < 0.0f) {
+        return 0.0f;
+    }
+    return value > 1.0f ? 1.0f : value;
+}
+
+static uint32_t blend_rgb(uint32_t from, uint32_t to, float amount)
+{
+    amount = clamp_unit(amount);
+    const float inverse = 1.0f - amount;
+    const uint8_t red = (uint8_t)((((from >> 16) & 0xFF) * inverse) + (((to >> 16) & 0xFF) * amount));
+    const uint8_t green = (uint8_t)((((from >> 8) & 0xFF) * inverse) + (((to >> 8) & 0xFF) * amount));
+    const uint8_t blue = (uint8_t)(((from & 0xFF) * inverse) + ((to & 0xFF) * amount));
+    return ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
+}
+
+static uint32_t hsv_to_rgb(float hue, float saturation, float value)
+{
+    hue = hue - floorf(hue);
+    saturation = clamp_unit(saturation);
+    value = clamp_unit(value);
+    const float scaled = hue * 6.0f;
+    const int sector = (int)floorf(scaled);
+    const float fraction = scaled - sector;
+    const float p = value * (1.0f - saturation);
+    const float q = value * (1.0f - saturation * fraction);
+    const float t = value * (1.0f - saturation * (1.0f - fraction));
+    float red = 0.0f;
+    float green = 0.0f;
+    float blue = 0.0f;
+    switch (sector % 6) {
+    case 0:
+        red = value; green = t; blue = p;
+        break;
+    case 1:
+        red = q; green = value; blue = p;
+        break;
+    case 2:
+        red = p; green = value; blue = t;
+        break;
+    case 3:
+        red = p; green = q; blue = value;
+        break;
+    case 4:
+        red = t; green = p; blue = value;
+        break;
+    default:
+        red = value; green = p; blue = q;
+        break;
+    }
+    return ((uint32_t)(red * 255.0f) << 16) |
+           ((uint32_t)(green * 255.0f) << 8) |
+           (uint32_t)(blue * 255.0f);
+}
+
+static float lighting_phase(float speed, int64_t now_ms)
+{
+    const float cycles_per_second = 0.25f + clamp_unit(speed) * 1.75f;
+    return fmodf((now_ms / 1000.0f) * cycles_per_second, 1.0f);
+}
+
+static uint32_t render_effect(uint32_t color,
+                              float brightness,
+                              uint8_t effect,
+                              float speed,
+                              float position,
+                              int64_t now_ms)
+{
+    brightness = clamp_unit(brightness);
+    position = clamp_unit(position);
+    if (effect == CODEX_LIGHTING_OFF || brightness <= 0.0f) {
+        return 0;
+    }
+    if (effect == CODEX_LIGHTING_SOLID) {
+        return apply_brightness(color, brightness);
+    }
+
+    const float phase = lighting_phase(speed, now_ms);
+    switch (effect) {
+    case CODEX_LIGHTING_SNAKE: {
+        float distance = fabsf(position - phase);
+        distance = fminf(distance, 1.0f - distance);
+        const float pulse = distance < 0.30f ? 1.0f - (distance / 0.30f) : 0.04f;
+        return apply_brightness(color, brightness * pulse);
+    }
+    case CODEX_LIGHTING_RAINBOW:
+        return hsv_to_rgb(phase + position, 1.0f, brightness);
+    case CODEX_LIGHTING_BREATH: {
+        const float pulse = 0.5f - 0.5f * cosf(phase * 2.0f * (float)M_PI);
+        return apply_brightness(color, brightness * pulse);
+    }
+    case CODEX_LIGHTING_GRADIENT:
+        return apply_brightness(blend_rgb(color, 0xFFFFFF, position * 0.45f), brightness);
+    case CODEX_LIGHTING_SHALLOW_BREATH: {
+        const float pulse = 0.75f - 0.25f * cosf(phase * 2.0f * (float)M_PI);
+        return apply_brightness(color, brightness * pulse);
+    }
+    default:
+        return apply_brightness(color, brightness);
+    }
+}
+
+static bool effect_is_animated(uint8_t effect)
+{
+    return effect == CODEX_LIGHTING_SNAKE ||
+           effect == CODEX_LIGHTING_RAINBOW ||
+           effect == CODEX_LIGHTING_BREATH ||
+           effect == CODEX_LIGHTING_SHALLOW_BREATH;
+}
+
+static uint32_t render_thread_color(const codex_thread_lighting_t *thread, int index, int64_t now_ms)
+{
+    return render_effect(thread->color,
+                         thread->brightness,
+                         thread->effect,
+                         thread->speed,
+                         (float)index / CODEX_THREAD_COUNT,
+                         now_ms);
+}
+
+static uint32_t render_side_color(const codex_lighting_side_t *side,
+                                  int index,
+                                  int count,
+                                  int64_t now_ms)
+{
+    const float position = count <= 1 ? 0.0f : (float)index / count;
+    return render_effect(side->color,
+                         side->brightness,
+                         side->effect,
+                         side->speed,
+                         position,
+                         now_ms);
 }
 
 static esp_err_t lcd_send(bool command, const void *data, size_t length)
@@ -178,6 +326,40 @@ static void lcd_draw_digit(int digit, int center_x, int center_y, uint16_t color
     }
 }
 
+static void lcd_draw_battery(uint16_t background)
+{
+    const int x = 286;
+    const int y = 7;
+    const int body_width = 25;
+    const int body_height = 14;
+    const uint16_t outline = 0xFFFF;
+
+    lcd_fill_rect(x, y, body_width, body_height, outline);
+    lcd_fill_rect(x + 2, y + 2, body_width - 4, body_height - 4, background);
+    lcd_fill_rect(x + body_width, y + 4, 3, body_height - 8, outline);
+
+    if (!s_power_status.available) {
+        lcd_fill_rect(x + 7, y + 6, 11, 2, rgb888_to_565(0xFF5C5C));
+        return;
+    }
+
+    int segments = (s_power_status.battery_percent + 24) / 25;
+    if (segments < 0) {
+        segments = 0;
+    } else if (segments > 4) {
+        segments = 4;
+    }
+    uint16_t fill = outline;
+    if (s_power_status.is_charging) {
+        fill = rgb888_to_565(0x42E879);
+    } else if (s_power_status.battery_percent <= 25) {
+        fill = rgb888_to_565(0xFF5C5C);
+    }
+    for (int segment = 0; segment < segments; ++segment) {
+        lcd_fill_rect(x + 3 + segment * 5, y + 3, 4, body_height - 6, fill);
+    }
+}
+
 static esp_err_t init_lcd(void)
 {
     gpio_config_t output_config = {
@@ -269,7 +451,7 @@ static esp_err_t init_leds(void)
     return ESP_OK;
 }
 
-static void flush_leds_locked(void)
+static void flush_leds_locked(int64_t now_ms)
 {
     if (!s_led_available) {
         return;
@@ -277,17 +459,20 @@ static void flush_leds_locked(void)
     uint8_t pixels[FACES_RGB_COUNT * 3] = {0};
     for (int i = 0; i < CODEX_THREAD_COUNT; ++i) {
         const codex_thread_lighting_t *thread = &s_lighting.threads[i];
-        const uint32_t color = apply_brightness(thread->color, thread->brightness);
+        const uint32_t color = render_thread_color(thread, i, now_ms);
         pixels[i * 3] = (color >> 8) & 0xFF;      // G
         pixels[i * 3 + 1] = (color >> 16) & 0xFF; // R
         pixels[i * 3 + 2] = color & 0xFF;         // B
     }
 
-    uint32_t ambient = apply_brightness(s_lighting.ambient_color, s_lighting.ambient_brightness);
-    if (ambient == 0 && s_connected) {
-        ambient = 0x2457FF;
-    }
     for (int i = CODEX_THREAD_COUNT; i < FACES_RGB_COUNT; ++i) {
+        uint32_t ambient = render_side_color(&s_lighting.ambient,
+                                             i - CODEX_THREAD_COUNT,
+                                             FACES_RGB_COUNT - CODEX_THREAD_COUNT,
+                                             now_ms);
+        if (ambient == 0 && s_connected && !s_lighting_received) {
+            ambient = 0x2457FF;
+        }
         pixels[i * 3] = (ambient >> 8) & 0xFF;
         pixels[i * 3 + 1] = (ambient >> 16) & 0xFF;
         pixels[i * 3 + 2] = ambient & 0xFF;
@@ -301,13 +486,20 @@ static void flush_leds_locked(void)
     }
 }
 
-static void refresh_screen_locked(void)
+static void refresh_screen_locked(int64_t now_ms)
 {
     if (!s_lcd_available) {
         return;
     }
-    const uint16_t header = s_agent_layer ? rgb888_to_565(0xFF8A33) : rgb888_to_565(0x3E63DD);
-    lcd_fill_rect(0, 0, FIRE_LCD_WIDTH, 28, s_connected ? header : rgb888_to_565(0x30333A));
+    uint32_t header_rgb = s_agent_layer ? 0xFF8A33 : 0x3E63DD;
+    const uint32_t keys_rgb = render_side_color(&s_lighting.keys, 0, 1, now_ms);
+    if (keys_rgb != 0) {
+        header_rgb = keys_rgb;
+    }
+    const uint16_t header = rgb888_to_565(header_rgb);
+    const uint16_t header_background = s_connected ? header : rgb888_to_565(0x30333A);
+    lcd_fill_rect(0, 0, FIRE_LCD_WIDTH, 28, header_background);
+    lcd_draw_battery(header_background);
     lcd_fill_rect(0, 28, FIRE_LCD_WIDTH, FIRE_LCD_HEIGHT - 28, rgb888_to_565(0x101216));
 
     const int tile_width = 96;
@@ -318,16 +510,46 @@ static void refresh_screen_locked(void)
         const int x = 8 + column * 104;
         const int y = 38 + row * 98;
         const codex_thread_lighting_t *thread = &s_lighting.threads[i];
-        uint32_t tile_rgb = apply_brightness(thread->color, thread->brightness);
+        uint32_t tile_rgb = render_thread_color(thread, i, now_ms);
         if (tile_rgb == 0) {
             tile_rgb = 0x24272E;
         }
         const uint16_t tile = rgb888_to_565(tile_rgb);
-        const uint16_t border = thread->effect == 4 ? 0xFFFF : rgb888_to_565(0x5B606B);
+        const uint16_t border = (thread->effect == CODEX_LIGHTING_BREATH ||
+                                 thread->effect == CODEX_LIGHTING_SHALLOW_BREATH)
+                                    ? 0xFFFF
+                                    : rgb888_to_565(0x5B606B);
         lcd_fill_rect(x, y, tile_width, tile_height, border);
         lcd_fill_rect(x + 3, y + 3, tile_width - 6, tile_height - 6, tile);
         lcd_draw_digit(i, x + tile_width / 2, y + tile_height / 2, 0xFFFF);
     }
+}
+
+static bool lighting_is_animated_locked(void)
+{
+    if (effect_is_animated(s_lighting.keys.effect) ||
+        effect_is_animated(s_lighting.ambient.effect)) {
+        return true;
+    }
+    for (int i = 0; i < CODEX_THREAD_COUNT; ++i) {
+        if (effect_is_animated(s_lighting.threads[i].effect)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool screen_is_animated_locked(void)
+{
+    if (effect_is_animated(s_lighting.keys.effect)) {
+        return true;
+    }
+    for (int i = 0; i < CODEX_THREAD_COUNT; ++i) {
+        if (effect_is_animated(s_lighting.threads[i].effect)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static esp_err_t init_i2c(void)
@@ -343,6 +565,113 @@ static esp_err_t init_i2c(void)
     };
     ESP_RETURN_ON_ERROR(i2c_param_config(FIRE_I2C_PORT, &config), TAG, "configure I2C bus");
     return i2c_driver_install(FIRE_I2C_PORT, config.mode, 0, 0, 0);
+}
+
+static esp_err_t ip5306_read_register(uint8_t reg, uint8_t *value)
+{
+    if (value == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return i2c_master_write_read_device(FIRE_I2C_PORT,
+                                        FIRE_IP5306_ADDRESS,
+                                        &reg,
+                                        sizeof(reg),
+                                        value,
+                                        1,
+                                        pdMS_TO_TICKS(50));
+}
+
+static int decode_ip5306_battery_level(uint8_t raw)
+{
+    switch (raw >> 4) {
+    case 0x00:
+        return 100;
+    case 0x08:
+        return 75;
+    case 0x0C:
+        return 50;
+    case 0x0E:
+        return 25;
+    default:
+        return 0;
+    }
+}
+
+static void update_power_status(void)
+{
+    uint8_t battery_raw = 0;
+    uint8_t charge_raw = 0;
+    const esp_err_t battery_result = ip5306_read_register(IP5306_REG_BATTERY_LEVEL, &battery_raw);
+    const esp_err_t charge_result = ip5306_read_register(IP5306_REG_CHARGE_STATUS, &charge_raw);
+    if (battery_result != ESP_OK || charge_result != ESP_OK) {
+        if (!s_power_error_logged) {
+            ESP_LOGW(TAG, "IP5306 unavailable (battery=%s, charge=%s)",
+                     esp_err_to_name(battery_result),
+                     esp_err_to_name(charge_result));
+            s_power_error_logged = true;
+        }
+        return;
+    }
+
+    const codex_power_status_t next = {
+        .battery_percent = decode_ip5306_battery_level(battery_raw),
+        .is_charging = (charge_raw & 0x08) != 0,
+        .available = true,
+    };
+    bool changed = false;
+    if (xSemaphoreTake(s_ui_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        changed = !s_power_status.available ||
+                  s_power_status.battery_percent != next.battery_percent ||
+                  s_power_status.is_charging != next.is_charging;
+        s_power_status = next;
+        if (changed) {
+            refresh_screen_locked(esp_timer_get_time() / 1000);
+        }
+        xSemaphoreGive(s_ui_mutex);
+    }
+    s_power_error_logged = false;
+
+    if (changed) {
+        ESP_LOGI(TAG, "IP5306 battery %d%%, charging=%s",
+                 next.battery_percent,
+                 next.is_charging ? "yes" : "no");
+        if (s_power_fn != NULL) {
+            s_power_fn(&next, s_power_context);
+        }
+    }
+}
+
+static void power_task(void *argument)
+{
+    (void)argument;
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(POWER_POLL_INTERVAL_MS));
+        update_power_status();
+    }
+}
+
+static void lighting_task(void *argument)
+{
+    (void)argument;
+    int64_t last_screen_frame_ms = 0;
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(LIGHTING_FRAME_INTERVAL_MS));
+        if (xSemaphoreTake(s_ui_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+            continue;
+        }
+        if (!lighting_is_animated_locked()) {
+            xSemaphoreGive(s_ui_mutex);
+            continue;
+        }
+        const int64_t now_ms = esp_timer_get_time() / 1000;
+        flush_leds_locked(now_ms);
+        if (screen_is_animated_locked() &&
+            now_ms - last_screen_frame_ms >= SCREEN_ANIMATION_INTERVAL_MS) {
+            refresh_screen_locked(now_ms);
+            last_screen_frame_ms = now_ms;
+        }
+        xSemaphoreGive(s_ui_mutex);
+    }
 }
 
 static uint16_t sample_pressed_buttons(void)
@@ -416,13 +745,18 @@ static void button_task(void *argument)
     }
 }
 
-esp_err_t board_fire_faces_init(board_button_fn button_fn, void *button_context)
+esp_err_t board_fire_faces_init(board_button_fn button_fn,
+                                void *button_context,
+                                board_power_fn power_fn,
+                                void *power_context)
 {
     if (button_fn == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     s_button_fn = button_fn;
     s_button_context = button_context;
+    s_power_fn = power_fn;
+    s_power_context = power_context;
     s_ui_mutex = xSemaphoreCreateMutex();
     if (s_ui_mutex == NULL) {
         return ESP_ERR_NO_MEM;
@@ -437,6 +771,7 @@ esp_err_t board_fire_faces_init(board_button_fn button_fn, void *button_context)
     };
     ESP_RETURN_ON_ERROR(gpio_config(&button_config), TAG, "configure FIRE buttons");
     ESP_RETURN_ON_ERROR(init_i2c(), TAG, "initialize FACES GameBoy panel");
+    update_power_status();
 
     esp_err_t status = init_leds();
     if (status != ESP_OK) {
@@ -454,10 +789,17 @@ esp_err_t board_fire_faces_init(board_button_fn button_fn, void *button_context)
     if (xTaskCreate(button_task, "faces_buttons", 3072, NULL, 5, NULL) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
+    if (xTaskCreate(power_task, "fire_power", 3072, NULL, 4, NULL) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    if (xTaskCreate(lighting_task, "faces_lighting", 4096, NULL, 4, NULL) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
 
     if (xSemaphoreTake(s_ui_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        flush_leds_locked();
-        refresh_screen_locked();
+        const int64_t now_ms = esp_timer_get_time() / 1000;
+        flush_leds_locked(now_ms);
+        refresh_screen_locked(now_ms);
         xSemaphoreGive(s_ui_mutex);
     }
     return ESP_OK;
@@ -469,8 +811,9 @@ void board_fire_faces_set_connected(bool connected)
         return;
     }
     s_connected = connected;
-    flush_leds_locked();
-    refresh_screen_locked();
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    flush_leds_locked(now_ms);
+    refresh_screen_locked(now_ms);
     xSemaphoreGive(s_ui_mutex);
 }
 
@@ -480,7 +823,7 @@ void board_fire_faces_set_agent_layer(bool enabled)
         return;
     }
     s_agent_layer = enabled;
-    refresh_screen_locked();
+    refresh_screen_locked(esp_timer_get_time() / 1000);
     xSemaphoreGive(s_ui_mutex);
 }
 
@@ -491,7 +834,22 @@ void board_fire_faces_apply_lighting(const codex_lighting_state_t *state, void *
         return;
     }
     s_lighting = *state;
-    flush_leds_locked();
-    refresh_screen_locked();
+    s_lighting_received = true;
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    flush_leds_locked(now_ms);
+    refresh_screen_locked(now_ms);
     xSemaphoreGive(s_ui_mutex);
+}
+
+void board_fire_faces_get_power_status(codex_power_status_t *status, void *context)
+{
+    (void)context;
+    if (status == NULL) {
+        return;
+    }
+    *status = (codex_power_status_t){0};
+    if (s_ui_mutex != NULL && xSemaphoreTake(s_ui_mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        *status = s_power_status;
+        xSemaphoreGive(s_ui_mutex);
+    }
 }

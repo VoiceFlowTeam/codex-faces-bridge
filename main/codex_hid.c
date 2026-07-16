@@ -1,5 +1,6 @@
 #include "codex_hid.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -14,6 +15,7 @@
 #include "esp_hidd.h"
 #include "esp_hidd_transport.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -48,7 +50,10 @@ static SemaphoreHandle_t s_tx_mutex;
 static bool s_connected;
 static bool s_hid_ready;
 static bool s_advertising;
+static bool s_battery_level_valid;
+static uint8_t s_battery_level;
 static uint8_t s_adv_config_pending;
+static char s_serial_number[24] = "FIRE-FACES-UNKNOWN";
 
 // Vendor-defined application collection. Report ID 6 carries 63 data bytes;
 // node-hid prepends the report ID and therefore exposes the expected 64 bytes.
@@ -82,7 +87,7 @@ static esp_hid_device_config_t s_hid_config = {
     .version = 0x0100,
     .device_name = "kbd-1.0-codex-micro",
     .manufacturer_name = "Work Louder",
-    .serial_number = "FIRE-FACES-0001",
+    .serial_number = s_serial_number,
     .report_maps = s_report_maps,
     .report_maps_len = 1,
 };
@@ -212,6 +217,12 @@ static void hidd_event_handler(void *handler_args,
     case ESP_HIDD_START_EVENT:
         ESP_LOGI(TAG, "HID service ready");
         s_hid_ready = true;
+        if (s_battery_level_valid) {
+            const esp_err_t status = esp_hidd_dev_battery_set(s_hid_device, s_battery_level);
+            if (status != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to initialize BLE battery level: %s", esp_err_to_name(status));
+            }
+        }
         try_start_advertising();
         break;
     case ESP_HIDD_CONNECT_EVENT:
@@ -289,6 +300,24 @@ static esp_err_t init_nvs(void)
     return status;
 }
 
+static void configure_unique_serial_number(void)
+{
+    uint8_t mac[6] = {0};
+    if (esp_read_mac(mac, ESP_MAC_BT) != ESP_OK) {
+        ESP_LOGW(TAG, "Unable to read Bluetooth MAC for serial number");
+        return;
+    }
+    snprintf(s_serial_number,
+             sizeof(s_serial_number),
+             "FIRE-%02X%02X%02X%02X%02X%02X",
+             mac[0],
+             mac[1],
+             mac[2],
+             mac[3],
+             mac[4],
+             mac[5]);
+}
+
 static esp_err_t init_bluetooth(void)
 {
     ESP_RETURN_ON_ERROR(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT), TAG, "release classic BT memory");
@@ -352,6 +381,7 @@ esp_err_t codex_hid_init(codex_hid_rx_fn rx_fn,
     }
 
     ESP_RETURN_ON_ERROR(init_nvs(), TAG, "init NVS");
+    configure_unique_serial_number();
     ESP_RETURN_ON_ERROR(init_bluetooth(), TAG, "init Bluetooth");
     ESP_RETURN_ON_ERROR(configure_advertising_and_security(), TAG, "configure BLE HID");
     ESP_RETURN_ON_ERROR(esp_hidd_dev_init(&s_hid_config,
@@ -401,6 +431,19 @@ esp_err_t codex_hid_send_text(const char *text, size_t length, void *context)
 
     xSemaphoreGive(s_tx_mutex);
     return status;
+}
+
+esp_err_t codex_hid_set_battery_level(uint8_t level)
+{
+    if (level > 100) {
+        level = 100;
+    }
+    s_battery_level = level;
+    s_battery_level_valid = true;
+    if (!s_hid_ready || s_hid_device == NULL) {
+        return ESP_OK;
+    }
+    return esp_hidd_dev_battery_set(s_hid_device, level);
 }
 
 bool codex_hid_is_connected(void)

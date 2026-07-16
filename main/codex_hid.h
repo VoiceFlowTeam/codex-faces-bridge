@@ -19,6 +19,7 @@ esp_err_t codex_hid_init(codex_hid_rx_fn rx_fn,
                          void *connection_context);
 
 esp_err_t codex_hid_send_text(const char *text, size_t length, void *context);
+esp_err_t codex_hid_set_battery_level(uint8_t level);
 bool codex_hid_is_connected(void);
 
 #ifdef __cplusplus
