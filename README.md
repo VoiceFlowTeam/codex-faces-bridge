@@ -26,7 +26,7 @@ Remove the FIRE M5GO bottom before fitting FACES II. The two bottoms are alterna
 | FIRE B | reasoning dial press | same |
 | FIRE C | `ACT12` | `ACT12` |
 
-The FACES II LEDs show the six thread colors supplied by Codex. The FIRE screen shows six matching tiles; a blue header is the normal layer, and orange is the Agent layer. Lighting effects `off`, `solid`, `snake`, `rainbow`, `breath`, `gradient`, and `shallowBreath` are rendered by the firmware. A segmented battery icon in the upper-right shows the IP5306 battery level and turns green while charging.
+The FACES II base has five LEDs on each side. Firmware composites the six thread colors into a five-point palette, mirrors it across both sides, overlays ambient effects, and limits LED output to 40% brightness. The FIRE screen shows six matching tiles; a blue header is the normal layer, and orange is the Agent layer. Lighting effects `off`, `solid`, `snake`, `rainbow`, `breath`, `gradient`, and `shallowBreath` are rendered by the firmware. A segmented battery icon in the upper-right shows the IP5306 battery level and turns green while charging.
 
 Codex owns and persists command-key and joystick mappings. FIRE B behaves like the physical dial: short press confirms the highlighted control, while a long press opens Codex Micro settings.
 

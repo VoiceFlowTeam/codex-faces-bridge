@@ -30,6 +30,8 @@
 
 #define FACES_RGB_GPIO GPIO_NUM_15
 #define FACES_RGB_COUNT 10
+#define FACES_RGB_PER_SIDE 5
+#define FACES_LED_MASTER_BRIGHTNESS 0.40f
 #define RGB_RMT_RESOLUTION_HZ 10000000
 #define LIGHTING_FRAME_INTERVAL_MS 40
 #define SCREEN_ANIMATION_INTERVAL_MS 500
@@ -231,6 +233,18 @@ static uint32_t render_side_color(const codex_lighting_side_t *side,
                          side->speed,
                          position,
                          now_ms);
+}
+
+static uint32_t render_thread_palette_color(int palette_index, int64_t now_ms)
+{
+    const float source = (float)palette_index * (CODEX_THREAD_COUNT - 1) /
+                         (FACES_RGB_PER_SIDE - 1);
+    const int lower = (int)floorf(source);
+    const int upper = lower + 1 < CODEX_THREAD_COUNT ? lower + 1 : lower;
+    const float amount = source - lower;
+    const uint32_t lower_color = render_thread_color(&s_lighting.threads[lower], lower, now_ms);
+    const uint32_t upper_color = render_thread_color(&s_lighting.threads[upper], upper, now_ms);
+    return blend_rgb(lower_color, upper_color, amount);
 }
 
 static esp_err_t lcd_send(bool command, const void *data, size_t length)
@@ -456,26 +470,30 @@ static void flush_leds_locked(int64_t now_ms)
     if (!s_led_available) {
         return;
     }
-    uint8_t pixels[FACES_RGB_COUNT * 3] = {0};
-    for (int i = 0; i < CODEX_THREAD_COUNT; ++i) {
-        const codex_thread_lighting_t *thread = &s_lighting.threads[i];
-        const uint32_t color = render_thread_color(thread, i, now_ms);
-        pixels[i * 3] = (color >> 8) & 0xFF;      // G
-        pixels[i * 3 + 1] = (color >> 16) & 0xFF; // R
-        pixels[i * 3 + 2] = color & 0xFF;         // B
+    uint32_t palette[FACES_RGB_PER_SIDE] = {0};
+    for (int position = 0; position < FACES_RGB_PER_SIDE; ++position) {
+        const uint32_t thread = render_thread_palette_color(position, now_ms);
+        const uint32_t ambient = render_side_color(&s_lighting.ambient,
+                                                    position,
+                                                    FACES_RGB_PER_SIDE,
+                                                    now_ms);
+        uint32_t color = thread != 0 && ambient != 0
+                             ? blend_rgb(ambient, thread, 0.82f)
+                             : (thread != 0 ? thread : ambient);
+        if (color == 0 && s_connected && !s_lighting_received) {
+            color = 0x2457FF;
+        }
+        palette[position] = apply_brightness(color, FACES_LED_MASTER_BRIGHTNESS);
     }
 
-    for (int i = CODEX_THREAD_COUNT; i < FACES_RGB_COUNT; ++i) {
-        uint32_t ambient = render_side_color(&s_lighting.ambient,
-                                             i - CODEX_THREAD_COUNT,
-                                             FACES_RGB_COUNT - CODEX_THREAD_COUNT,
-                                             now_ms);
-        if (ambient == 0 && s_connected && !s_lighting_received) {
-            ambient = 0x2457FF;
-        }
-        pixels[i * 3] = (ambient >> 8) & 0xFF;
-        pixels[i * 3 + 1] = (ambient >> 16) & 0xFF;
-        pixels[i * 3 + 2] = ambient & 0xFF;
+    uint8_t pixels[FACES_RGB_COUNT * 3] = {0};
+    for (int led = 0; led < FACES_RGB_COUNT; ++led) {
+        // Mirror the second five-LED group for a balanced two-sided palette.
+        const int position = led < FACES_RGB_PER_SIDE ? led : FACES_RGB_COUNT - 1 - led;
+        const uint32_t color = palette[position];
+        pixels[led * 3] = (color >> 8) & 0xFF;      // G
+        pixels[led * 3 + 1] = (color >> 16) & 0xFF; // R
+        pixels[led * 3 + 2] = color & 0xFF;         // B
     }
 
     rmt_transmit_config_t transmit_config = {
