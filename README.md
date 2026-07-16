@@ -30,6 +30,8 @@ The FACES II base has five LEDs on each side. Firmware composites the six thread
 
 Codex owns and persists command-key and joystick mappings. FIRE B behaves like the physical dial: short press confirms the highlighted control, while a long press opens Codex Micro settings.
 
+The D-pad translates the GameBoy panel directions into Codex's native radial convention: zero degrees points right and angles increase clockwise.
+
 ## Build and flash
 
 ESP-IDF 5.5 is the tested toolchain.

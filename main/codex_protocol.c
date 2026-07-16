@@ -10,7 +10,7 @@
 #include "freertos/semphr.h"
 
 #define CODEX_RPC_BUFFER_SIZE 2048
-#define CODEX_FIRMWARE_VERSION "0.2.2-fire-faces"
+#define CODEX_FIRMWARE_VERSION "0.2.3-fire-faces"
 
 static const char *TAG = "codex_rpc";
 

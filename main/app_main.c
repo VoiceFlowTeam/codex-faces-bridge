@@ -39,20 +39,21 @@ static void send_direction_state(void)
     const int y = (s_direction_pressed[BOARD_BUTTON_DOWN] ? 1 : 0) -
                   (s_direction_pressed[BOARD_BUTTON_UP] ? 1 : 0);
 
+    // Codex normalizes joystick angles clockwise from the positive X axis.
     float angle = 0.0f;
-    if (x == 1 && y == -1) {
+    if (x == 1 && y == 1) {
         angle = 0.125f;
-    } else if (x == 1 && y == 0) {
-        angle = 0.25f;
-    } else if (x == 1 && y == 1) {
-        angle = 0.375f;
     } else if (x == 0 && y == 1) {
-        angle = 0.5f;
+        angle = 0.25f;
     } else if (x == -1 && y == 1) {
-        angle = 0.625f;
+        angle = 0.375f;
     } else if (x == -1 && y == 0) {
-        angle = 0.75f;
+        angle = 0.5f;
     } else if (x == -1 && y == -1) {
+        angle = 0.625f;
+    } else if (x == 0 && y == -1) {
+        angle = 0.75f;
+    } else if (x == 1 && y == -1) {
         angle = 0.875f;
     }
 
