@@ -1,6 +1,6 @@
 # Codex FACES Bridge 使用手册
 
-适用固件：`0.2.1-fire-faces`
+适用固件：`0.2.2-fire-faces`
 
 适用平台：macOS + Codex 桌面应用
 
@@ -78,7 +78,7 @@ M5GO Bottom 和 FACES II Bottom 是两种替代底座，不能同时叠装。
 
 屏幕中的 `0`～`5` 六个方块对应六个 Codex 线程或 Agent 槽位。颜色、亮度和效果由 Codex 下发。
 
-FACES II 左右各有 5 颗 LED。固件将六个线程颜色合成为五点调色板，并镜像显示在左右两侧，同时叠加 Codex 环境灯效。LED 总亮度限制为 40%，不会影响 FIRE 屏幕亮度。
+FACES II 左右各有 5 颗 LED。固件将六个线程颜色合成为五点调色板，并镜像显示在左右两侧，同时叠加 Codex 环境灯效。LED 总亮度限制为 20%，不会影响 FIRE 屏幕亮度。
 
 ## 5. 按键说明
 
