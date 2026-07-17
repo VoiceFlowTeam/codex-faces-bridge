@@ -160,9 +160,7 @@ function FiveWayButton({ onTrigger }: { onTrigger: (direction: FiveWayDirection)
       onKeyUp={handleKeyUp}
       onBlur={() => setPressed(null)}
     >
-      <span className="five-way-puck" aria-hidden="true">
-        <span className="five-way-mark" />
-      </span>
+      <span className="five-way-puck" aria-hidden="true" />
     </button>
   );
 }

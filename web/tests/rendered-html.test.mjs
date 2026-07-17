@@ -48,6 +48,7 @@ test("ships production assets and removes the starter preview", async () => {
 
   assert.match(page, /RotaryDial/);
   assert.match(page, /FiveWayButton/);
+  assert.doesNotMatch(page, /five-way-mark/);
   assert.match(page, /THREAD_COLORS/);
   assert.match(page, /aria-live/);
   assert.match(page, /aria-valuenow/);

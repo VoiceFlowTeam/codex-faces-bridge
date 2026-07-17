@@ -372,24 +372,12 @@ button {
   box-shadow: inset 1px 1px 1px rgba(255,255,255,.28);
 }
 
-.five-way-mark {
-  position: absolute;
-  width: 9%;
-  height: 21%;
-  left: 61%;
-  top: 8%;
-  border-radius: 999px;
-  background: rgba(255,255,255,.78);
-  transform: rotate(22deg);
-  box-shadow: inset 1px 1px 1px rgba(255,255,255,.28);
-}
-
-.five-way[data-press="up"] .five-way-puck { transform: translateY(-7%); }
-.five-way[data-press="right"] .five-way-puck { transform: translateX(7%); }
-.five-way[data-press="down"] .five-way-puck { transform: translateY(7%); }
-.five-way[data-press="left"] .five-way-puck { transform: translateX(-7%); }
+.five-way[data-press="up"] .five-way-puck { transform: translateY(-14%); }
+.five-way[data-press="right"] .five-way-puck { transform: translateX(14%); }
+.five-way[data-press="down"] .five-way-puck { transform: translateY(14%); }
+.five-way[data-press="left"] .five-way-puck { transform: translateX(-14%); }
 .five-way[data-press="center"] .five-way-puck {
-  transform: translateY(3%) scale(.94);
+  transform: translateY(6%) scale(.92);
   box-shadow:
     0 3px 5px rgba(36,42,46,.28),
     inset 2px 3px 6px rgba(0,0,0,.34),
