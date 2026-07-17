@@ -24,10 +24,9 @@ type DialProps = {
   label: string;
   value: number;
   onChange: (value: number) => void;
-  variant: "light" | "dark";
 };
 
-function RotaryDial({ label, value, onChange, variant }: DialProps) {
+function RotaryDial({ label, value, onChange }: DialProps) {
   const updateFromPointer = (event: PointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - (bounds.left + bounds.width / 2);
@@ -72,7 +71,7 @@ function RotaryDial({ label, value, onChange, variant }: DialProps) {
 
   return (
     <div
-      className={`dial-shell dial-${variant}`}
+      className="dial-shell dial-light"
       role="slider"
       tabIndex={0}
       aria-label={label}
@@ -91,13 +90,89 @@ function RotaryDial({ label, value, onChange, variant }: DialProps) {
   );
 }
 
+type FiveWayDirection = "up" | "right" | "down" | "left" | "center";
+
+const FIVE_WAY_KEYS: Record<string, FiveWayDirection> = {
+  ArrowUp: "up",
+  ArrowRight: "right",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  Enter: "center",
+  " ": "center",
+};
+
+function FiveWayButton({ onTrigger }: { onTrigger: (direction: FiveWayDirection) => void }) {
+  const [pressed, setPressed] = useState<FiveWayDirection | null>(null);
+
+  const directionFromPointer = (event: PointerEvent<HTMLButtonElement>): FiveWayDirection => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left - bounds.width / 2) / (bounds.width / 2);
+    const y = (event.clientY - bounds.top - bounds.height / 2) / (bounds.height / 2);
+    if (Math.hypot(x, y) < 0.34) return "center";
+    if (Math.abs(x) > Math.abs(y)) return x > 0 ? "right" : "left";
+    return y > 0 ? "down" : "up";
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPressed(directionFromPointer(event));
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      setPressed(directionFromPointer(event));
+    }
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    const direction = directionFromPointer(event);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setPressed(null);
+    onTrigger(direction);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const direction = FIVE_WAY_KEYS[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    setPressed(direction);
+    if (!event.repeat) onTrigger(direction);
+  };
+
+  const handleKeyUp = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!FIVE_WAY_KEYS[event.key]) return;
+    event.preventDefault();
+    setPressed(null);
+  };
+
+  return (
+    <button
+      className="five-way"
+      data-press={pressed ?? "idle"}
+      aria-label="Five-way navigation"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => setPressed(null)}
+      onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
+      onBlur={() => setPressed(null)}
+    >
+      <span className="five-way-puck" aria-hidden="true">
+        <span className="five-way-mark" />
+      </span>
+    </button>
+  );
+}
+
 export default function Home() {
   const [threads, setThreads] = useState(() => Array(6).fill(false) as boolean[]);
   const [recording, setRecording] = useState(false);
   const [connected, setConnected] = useState(true);
   const [agentMode, setAgentMode] = useState(false);
   const [modeDial, setModeDial] = useState(50);
-  const [reasoning, setReasoning] = useState(58);
   const [lastEvent, setLastEvent] = useState("Ready — interact with the controls");
   const [flashingAction, setFlashingAction] = useState<string | null>(null);
   const eventTimer = useRef<number | null>(null);
@@ -159,11 +234,6 @@ export default function Home() {
     announce(`Mode: ${mode}`);
   };
 
-  const updateReasoning = (value: number) => {
-    setReasoning(value);
-    announce(`Reasoning effort: ${value}%`);
-  };
-
   return (
     <main className="simulator-page">
       <section className="device-wrap" aria-label="Codex Micro interactive simulator">
@@ -181,7 +251,7 @@ export default function Home() {
             <span className="bottom-copy">Let&apos;s build</span>
 
             <div className="control-grid">
-              <RotaryDial label="Mode selector" value={modeDial} onChange={updateModeDial} variant="light" />
+              <RotaryDial label="Mode selector" value={modeDial} onChange={updateModeDial} />
 
               {threads.slice(0, 2).map((active, index) => (
                 <button
@@ -197,7 +267,7 @@ export default function Home() {
                 </button>
               ))}
 
-              <RotaryDial label="Reasoning effort" value={reasoning} onChange={updateReasoning} variant="dark" />
+              <FiveWayButton onTrigger={(direction) => announce(`Five-way: ${direction}`)} />
 
               {threads.slice(2).map((active, offset) => {
                 const index = offset + 2;
@@ -294,7 +364,7 @@ export default function Home() {
         <div className="status-console" aria-live="polite">
           <span className={`connection-dot ${connected ? "online" : ""}`} />
           <span>{lastEvent}</span>
-          <span className="shortcut-hint">1–6 threads · R voice · drag or scroll dials</span>
+          <span className="shortcut-hint">1–6 threads · R voice · drag dial · arrows + Enter navigate</span>
         </div>
       </section>
     </main>

@@ -31,7 +31,8 @@ test("server-renders the Codex Micro simulator", async () => {
   const html = await response.text();
   assert.match(html, /<title>Codex Micro — Interactive Web Simulator<\/title>/i);
   assert.match(html, /Codex Micro interactive simulator/i);
-  assert.match(html, /aria-label="Reasoning effort"/i);
+  assert.match(html, /aria-label="Five-way navigation"/i);
+  assert.doesNotMatch(html, /aria-label="Reasoning effort"/i);
   assert.match(html, /aria-label="Start recording"/i);
   assert.match(html, /og:image/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
@@ -46,6 +47,7 @@ test("ships production assets and removes the starter preview", async () => {
   ]);
 
   assert.match(page, /RotaryDial/);
+  assert.match(page, /FiveWayButton/);
   assert.match(page, /THREAD_COLORS/);
   assert.match(page, /aria-live/);
   assert.match(page, /aria-valuenow/);

@@ -179,7 +179,8 @@ button {
 .action-key:focus-visible,
 .mic-key:focus-visible,
 .power-button:focus-visible,
-.dial-shell:focus-visible {
+.dial-shell:focus-visible,
+.five-way:focus-visible {
   outline: 3px solid rgba(86, 105, 199, .48);
   outline-offset: 4px;
 }
@@ -326,21 +327,38 @@ button {
     inset -3px -4px 7px rgba(89,101,109,.12);
 }
 
-.dial-dark::before {
+.five-way {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 22%;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.five-way::before {
   content: "";
   position: absolute;
   inset: 7%;
   border: 4px dashed #353a3f;
   border-radius: 24%;
+  pointer-events: none;
 }
 
-.dial-dark .dial-face {
+.five-way-puck {
+  position: relative;
   width: 64%;
+  aspect-ratio: 1;
+  border-radius: 50%;
   background: radial-gradient(circle at 36% 30%, #282e32, #0f1316 66%);
   box-shadow:
     0 8px 11px rgba(36, 42, 46, .32),
     inset 2px 2px 4px rgba(255,255,255,.08),
     inset -3px -4px 7px rgba(0,0,0,.42);
+  transition: transform 90ms ease, box-shadow 90ms ease;
 }
 
 .dial-tick {
@@ -354,12 +372,28 @@ button {
   box-shadow: inset 1px 1px 1px rgba(255,255,255,.28);
 }
 
-.dial-dark .dial-tick {
-  width: 8%;
-  height: 19%;
-  left: 46%;
-  top: 7%;
+.five-way-mark {
+  position: absolute;
+  width: 9%;
+  height: 21%;
+  left: 61%;
+  top: 8%;
+  border-radius: 999px;
   background: rgba(255,255,255,.78);
+  transform: rotate(22deg);
+  box-shadow: inset 1px 1px 1px rgba(255,255,255,.28);
+}
+
+.five-way[data-press="up"] .five-way-puck { transform: translateY(-7%); }
+.five-way[data-press="right"] .five-way-puck { transform: translateX(7%); }
+.five-way[data-press="down"] .five-way-puck { transform: translateY(7%); }
+.five-way[data-press="left"] .five-way-puck { transform: translateX(-7%); }
+.five-way[data-press="center"] .five-way-puck {
+  transform: translateY(3%) scale(.94);
+  box-shadow:
+    0 3px 5px rgba(36,42,46,.28),
+    inset 2px 3px 6px rgba(0,0,0,.34),
+    inset 1px 1px 3px rgba(255,255,255,.06);
 }
 
 .power-cluster {
