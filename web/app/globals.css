@@ -196,9 +196,9 @@ button {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: rgba(255,255,255,.7);
-  background: color-mix(in srgb, var(--thread-color) 60%, #d9e0e8);
-  opacity: .63;
+  color: rgba(255,255,255,.62);
+  background: color-mix(in srgb, var(--thread-color) 38%, #e2e6eb);
+  opacity: .42;
   box-shadow: inset 0 1px 2px rgba(255,255,255,.55);
   transition: opacity 180ms ease, box-shadow 220ms ease, transform 180ms ease;
 }
@@ -209,12 +209,11 @@ button {
 }
 
 .thread-key[data-active="true"] .thread-light {
-  opacity: 1;
-  transform: scale(1.05);
+  opacity: .92;
+  transform: scale(1.03);
   color: white;
   box-shadow:
-    0 0 13px color-mix(in srgb, var(--thread-color) 85%, white),
-    0 0 28px color-mix(in srgb, var(--thread-color) 42%, transparent),
+    0 0 8px color-mix(in srgb, var(--thread-color) 55%, white),
     inset 0 1px 2px rgba(255,255,255,.7);
 }
 
@@ -222,7 +221,7 @@ button {
   box-shadow:
     0 8px 13px rgba(77, 87, 94, 0.13),
     inset 0 0 0 2px rgba(255,255,255,.88),
-    0 0 18px color-mix(in srgb, var(--thread-color) 26%, transparent);
+    0 0 9px color-mix(in srgb, var(--thread-color) 16%, transparent);
 }
 
 .action-key {

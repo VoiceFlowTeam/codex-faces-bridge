@@ -11,14 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 
-const THREAD_COLORS = [
-  "#8a98d8",
-  "#ef6d91",
-  "#8d78e8",
-  "#ff9b72",
-  "#64bfc1",
-  "#d3ad5a",
-];
+const THREAD_COLOR = "#8f9bd3";
 
 type DialProps = {
   label: string;
@@ -256,7 +249,7 @@ export default function Home() {
                   className="thread-key"
                   data-active={active}
                   key={index}
-                  style={{ "--thread-color": THREAD_COLORS[index] } as CSSProperties}
+                  style={{ "--thread-color": THREAD_COLOR } as CSSProperties}
                   onClick={() => toggleThread(index)}
                   aria-label={`Toggle thread ${index + 1}`}
                   aria-pressed={active}
@@ -274,7 +267,7 @@ export default function Home() {
                     className="thread-key"
                     data-active={active}
                     key={index}
-                    style={{ "--thread-color": THREAD_COLORS[index] } as CSSProperties}
+                    style={{ "--thread-color": THREAD_COLOR } as CSSProperties}
                     onClick={() => toggleThread(index)}
                     aria-label={`Toggle thread ${index + 1}`}
                     aria-pressed={active}
