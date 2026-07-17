@@ -3,7 +3,7 @@
 import type { CSSProperties, KeyboardEvent, PointerEvent, WheelEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Bot,
+  Badge,
   Check,
   GitBranch,
   Mic,
@@ -267,7 +267,7 @@ export default function Home() {
                 aria-label={recording ? "Stop recording" : "Start recording"}
                 aria-pressed={recording}
               >
-                <Mic />
+                <span className="mic-glyph" aria-hidden="true"><Mic /></span>
                 <span className="sound-waves" aria-hidden="true"><i /><i /><i /><i /></span>
               </button>
 
@@ -280,7 +280,12 @@ export default function Home() {
                 }}
                 aria-label="Toggle agent layer"
                 aria-pressed={agentMode}
-              ><Bot /></button>
+              >
+                <span className="agent-glyph" aria-hidden="true">
+                  <Badge />
+                  <span>&gt;_</span>
+                </span>
+              </button>
             </div>
           </div>
         </div>

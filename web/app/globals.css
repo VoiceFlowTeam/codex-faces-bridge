@@ -230,7 +230,8 @@ button {
 }
 
 .action-key > svg,
-.action-key > .circle-icon {
+.action-key > .circle-icon,
+.action-key > .agent-glyph {
   width: 38%;
   height: 38%;
   position: relative;
@@ -239,7 +240,8 @@ button {
 }
 
 .action-key:hover > svg,
-.action-key:hover > .circle-icon {
+.action-key:hover > .circle-icon,
+.action-key:hover > .agent-glyph {
   transform: scale(1.07);
 }
 
@@ -258,6 +260,33 @@ button {
   width: 64%;
   height: 64%;
   stroke-width: 2.2;
+}
+
+.action-key > .agent-glyph {
+  width: 47%;
+  height: 47%;
+  display: grid;
+  place-items: center;
+}
+
+.agent-glyph svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  stroke-width: 2;
+}
+
+.agent-glyph span {
+  position: relative;
+  z-index: 1;
+  margin-left: -4%;
+  margin-top: -2%;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: clamp(7px, 1.45vw, 14px);
+  font-weight: 700;
+  letter-spacing: -.14em;
+  line-height: 1;
 }
 
 .assistant-key[data-active="true"] {
@@ -389,14 +418,32 @@ button {
   place-items: center;
 }
 
-.mic-key > svg {
+.mic-glyph {
   position: relative;
   z-index: 2;
   width: 20%;
   height: 46%;
-  stroke-width: 1.8;
+  display: grid;
+  place-items: center;
   transform-origin: center;
   transition: color 180ms ease, transform 180ms ease, filter 180ms ease;
+}
+
+.mic-glyph svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.75;
+}
+
+.mic-glyph::after {
+  content: "";
+  position: absolute;
+  left: 34%;
+  bottom: 1%;
+  width: 32%;
+  height: 4.5%;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .mic-key[data-recording="true"] {
@@ -405,7 +452,7 @@ button {
   box-shadow: 0 8px 18px rgba(225, 82, 119, .22), inset 0 0 0 2px rgba(255,255,255,.86);
 }
 
-.mic-key[data-recording="true"] > svg {
+.mic-key[data-recording="true"] .mic-glyph {
   color: #ef5f83;
   filter: drop-shadow(0 0 8px rgba(239,95,131,.35));
   animation: mic-pulse 1.35s ease-in-out infinite;
