@@ -6,7 +6,6 @@ import {
   Badge,
   Check,
   GitBranch,
-  Mic,
   Plus,
   X,
   Zap,
@@ -267,8 +266,10 @@ export default function Home() {
                 aria-label={recording ? "Stop recording" : "Start recording"}
                 aria-pressed={recording}
               >
-                <span className="mic-glyph" aria-hidden="true"><Mic /></span>
-                <span className="sound-waves" aria-hidden="true"><i /><i /><i /><i /></span>
+                <span className="mic-glyph" aria-hidden="true">
+                  <span className="mic-capsule" />
+                  <span className="mic-yoke" />
+                </span>
               </button>
 
               <button

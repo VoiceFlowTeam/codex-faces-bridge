@@ -412,36 +412,77 @@ button {
 }
 
 .mic-key {
+  --mic-stroke: clamp(2px, .42vw, 3.5px);
   grid-column: span 2;
-  border-radius: 16%;
+  border: 1px solid rgba(111, 121, 128, .23);
+  border-radius: 10% / 21%;
   display: grid;
   place-items: center;
+  background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(239,242,244,.92));
+  box-shadow:
+    0 8px 12px rgba(77, 87, 94, .15),
+    inset 0 1px 2px rgba(255,255,255,.96),
+    inset 0 -3px 5px rgba(107,119,127,.08),
+    0 0 0 2px rgba(255,255,255,.58);
+}
+
+.mic-key::before {
+  inset: 7%;
+  border-radius: 9% / 20%;
+  border: 1px solid rgba(255,255,255,.92);
+  box-shadow: inset 0 0 0 1px rgba(137,146,152,.05);
 }
 
 .mic-glyph {
   position: relative;
   z-index: 2;
-  width: 20%;
-  height: 46%;
-  display: grid;
-  place-items: center;
+  width: 19%;
+  height: 49%;
   transform-origin: center;
   transition: color 180ms ease, transform 180ms ease, filter 180ms ease;
 }
 
-.mic-glyph svg {
-  width: 100%;
-  height: 100%;
-  stroke-width: 1.75;
+.mic-capsule {
+  position: absolute;
+  top: 0;
+  left: 34%;
+  width: 32%;
+  height: 57%;
+  border: var(--mic-stroke) solid currentColor;
+  border-radius: 999px;
+}
+
+.mic-yoke {
+  position: absolute;
+  top: 33%;
+  left: 14%;
+  width: 72%;
+  height: 50%;
+  border-right: var(--mic-stroke) solid currentColor;
+  border-bottom: var(--mic-stroke) solid currentColor;
+  border-left: var(--mic-stroke) solid currentColor;
+  border-radius: 0 0 999px 999px;
+}
+
+.mic-glyph::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 80%;
+  width: var(--mic-stroke);
+  height: 14%;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
 }
 
 .mic-glyph::after {
   content: "";
   position: absolute;
-  left: 34%;
-  bottom: 1%;
+  left: 33%;
+  bottom: 0;
   width: 32%;
-  height: 4.5%;
+  height: var(--mic-stroke);
   border-radius: 999px;
   background: currentColor;
 }
@@ -457,33 +498,6 @@ button {
   filter: drop-shadow(0 0 8px rgba(239,95,131,.35));
   animation: mic-pulse 1.35s ease-in-out infinite;
 }
-
-.sound-waves {
-  display: none;
-  position: absolute;
-  left: 50%;
-  bottom: 13%;
-  transform: translateX(-50%);
-  height: 16%;
-  align-items: end;
-  gap: 3px;
-}
-
-.mic-key[data-recording="true"] .sound-waves {
-  display: flex;
-}
-
-.sound-waves i {
-  width: 3px;
-  height: 40%;
-  border-radius: 999px;
-  background: #ef5f83;
-  animation: wave .7s ease-in-out infinite alternate;
-}
-
-.sound-waves i:nth-child(2) { animation-delay: -.2s; height: 85%; }
-.sound-waves i:nth-child(3) { animation-delay: -.42s; height: 60%; }
-.sound-waves i:nth-child(4) { animation-delay: -.1s; height: 100%; }
 
 .screw {
   position: absolute;
@@ -578,11 +592,6 @@ button {
 @keyframes mic-pulse {
   0%, 100% { transform: scale(.92); opacity: .82; }
   50% { transform: scale(1.06); opacity: 1; }
-}
-
-@keyframes wave {
-  from { transform: scaleY(.45); }
-  to { transform: scaleY(1); }
 }
 
 @media (max-width: 640px) {
