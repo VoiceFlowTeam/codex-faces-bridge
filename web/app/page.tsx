@@ -268,7 +268,6 @@ export default function Home() {
                 aria-pressed={recording}
               >
                 <Mic />
-                <span className="mic-status" />
                 <span className="sound-waves" aria-hidden="true"><i /><i /><i /><i /></span>
               </button>
 

@@ -49,6 +49,7 @@ test("ships production assets and removes the starter preview", async () => {
   assert.match(page, /THREAD_COLORS/);
   assert.match(page, /aria-live/);
   assert.match(page, /aria-valuenow/);
+  assert.doesNotMatch(page, /mic-status/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(layout, /og\.png/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
