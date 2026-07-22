@@ -76,6 +76,20 @@ After flashing:
 
 This is a clean-room compatibility implementation based on observed app/device behavior. It is not an official OpenAI, Codex, or Work Louder product.
 
+## macOS software-only implementation
+
+`macos/CodexMicroSoftwareBridge` contains a Swift implementation that creates
+the same vendor HID device directly in macOS, implements the Codex RPC surface,
+and accepts physical HID or private-GATT BLE remote input. Its protocol tests
+and remote probe mode run without special privileges. Creating the virtual HID
+device requires Apple's restricted
+`com.apple.developer.hid.virtual.device` entitlement and a matching signed
+build; see the subproject README for build and provisioning details.
+
 ## Documentation
 
 - [中文使用手册](docs/Codex_FACES_Bridge_使用手册.md)
+
+## License
+
+This project is released under the [MIT License](LICENSE).

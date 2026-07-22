@@ -3,3 +3,5 @@ outputs/
 sdkconfig
 sdkconfig.old
 .DS_Store
+work/
+macos/CodexMicroSoftwareBridge/.build/
