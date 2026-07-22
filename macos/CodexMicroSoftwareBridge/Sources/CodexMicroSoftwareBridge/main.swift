@@ -6,6 +6,7 @@ private struct Options {
     var hidProductFilter: String?
     var bleNameFilter: String?
     var bleMapPath: String?
+    var bleListOnly = false
     var enableHIDInput = false
     var enableStdin = true
     var verbose = false
@@ -32,6 +33,9 @@ private struct Options {
                 index += 1
                 guard index < arguments.count else { throw usageError("--ble-map requires a value") }
                 options.bleMapPath = arguments[index]
+            case "--ble-list":
+                options.bleNameFilter = ""
+                options.bleListOnly = true
             case "--no-stdin": options.enableStdin = false
             case "--verbose": options.verbose = true
             case "--protocol-self-test": options.protocolSelfTest = true
@@ -59,6 +63,7 @@ private func printUsage() {
       --hid-product NAME    Read only physical HID devices whose product contains NAME
       --all-hid-input       Read all physical HID devices (use carefully)
       --ble-name NAME       Scan/connect a private-GATT BLE remote containing NAME
+      --ble-list            List nearby BLE advertisements without connecting
       --ble-map FILE        JSON mapping for exact BLE characteristic notifications
       --no-stdin            Disable interactive stdin commands
       --verbose             Print RPC and raw input diagnostics
@@ -134,6 +139,7 @@ private final class BridgeApplication {
             let mapping = try BLERemoteMapping.load(path: options.bleMapPath)
             bleInput = BLERemoteInput(
                 nameFilter: bleNameFilter,
+                listOnly: options.bleListOnly,
                 mapping: mapping,
                 keyHandler: { [weak self] key, pressed in self?.protocolEngine.sendKey(key, pressed: pressed) },
                 radialHandler: { [weak self] angle, distance in self?.protocolEngine.sendJoystick(angle: angle, distance: distance) },

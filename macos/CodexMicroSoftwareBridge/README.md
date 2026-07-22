@@ -67,8 +67,14 @@ Private BLE/GATT remote:
 
 ```sh
 .build/release/codex-micro-software-bridge \
+  --probe-only --ble-list --verbose
+
+.build/release/codex-micro-software-bridge \
   --probe-only --ble-name "Xiaomi" --verbose
 ```
+
+Use `--ble-list` first when the remote's advertised name is unknown. It lists
+nearby advertisements without connecting to them.
 
 Standard HID remote:
 

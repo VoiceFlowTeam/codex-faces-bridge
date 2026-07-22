@@ -21,6 +21,7 @@ struct BLERemoteMapping: Decodable {
 
 final class BLERemoteInput: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private let nameFilter: String
+    private let listOnly: Bool
     private let mapping: BLERemoteMapping
     private let keyHandler: (_ key: String, _ pressed: Bool) -> Void
     private let radialHandler: (_ angle: Double, _ distance: Double) -> Void
@@ -28,15 +29,18 @@ final class BLERemoteInput: NSObject, CBCentralManagerDelegate, CBPeripheralDele
     private let queue = DispatchQueue(label: "codex.micro.remote-ble")
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
+    private var seenPeripherals = Set<UUID>()
 
     init(
         nameFilter: String,
+        listOnly: Bool = false,
         mapping: BLERemoteMapping,
         keyHandler: @escaping (_ key: String, _ pressed: Bool) -> Void,
         radialHandler: @escaping (_ angle: Double, _ distance: Double) -> Void,
         log: @escaping (String) -> Void
     ) {
         self.nameFilter = nameFilter.lowercased()
+        self.listOnly = listOnly
         self.mapping = mapping
         self.keyHandler = keyHandler
         self.radialHandler = radialHandler
@@ -55,8 +59,12 @@ final class BLERemoteInput: NSObject, CBCentralManagerDelegate, CBPeripheralDele
             log("BLE central state: \(central.state.rawValue)")
             return
         }
-        log("Scanning for BLE remote containing name: \(nameFilter)")
-        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        if listOnly {
+            log("Listing nearby BLE advertisements")
+        } else {
+            log("Scanning for BLE remote containing name: \(nameFilter)")
+        }
+        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: listOnly])
     }
 
     func centralManager(
@@ -66,6 +74,11 @@ final class BLERemoteInput: NSObject, CBCentralManagerDelegate, CBPeripheralDele
         rssi RSSI: NSNumber
     ) {
         let name = peripheral.name ?? advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? ""
+        if listOnly {
+            guard seenPeripherals.insert(peripheral.identifier).inserted else { return }
+            log("BLE advertisement name=\(name.isEmpty ? "<unnamed>" : name) id=\(peripheral.identifier.uuidString) rssi=\(RSSI)")
+            return
+        }
         guard name.lowercased().contains(nameFilter) else { return }
         self.peripheral = peripheral
         central.stopScan()
