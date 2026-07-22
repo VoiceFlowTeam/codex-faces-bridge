@@ -1,0 +1,28 @@
+{
+  "entries": [
+    {
+      "characteristic": "0000FFF1-0000-1000-8000-00805F9B34FB",
+      "value": "0101",
+      "key": "ACT06",
+      "pressed": true
+    },
+    {
+      "characteristic": "0000FFF1-0000-1000-8000-00805F9B34FB",
+      "value": "0100",
+      "key": "ACT06",
+      "pressed": false
+    },
+    {
+      "characteristic": "0000FFF1-0000-1000-8000-00805F9B34FB",
+      "value": "0201",
+      "angle": -90,
+      "distance": 1
+    },
+    {
+      "characteristic": "0000FFF1-0000-1000-8000-00805F9B34FB",
+      "value": "0200",
+      "angle": -90,
+      "distance": 0
+    }
+  ]
+}
